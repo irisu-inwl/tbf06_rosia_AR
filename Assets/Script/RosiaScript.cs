@@ -1,10 +1,73 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using IBM.Watson.DeveloperCloud.Services.SpeechToText.v1;
 using IBM.Watson.DeveloperCloud.Connection;
 using IBM.Watson.DeveloperCloud.Utilities;
+using UnityEngine.Networking;
+
+[System.Serializable]
+public class ChatRequestData{
+    public string language = "ja-JP";
+    public string botId = "Chatting";
+    public string appId;
+    public string voiceText;
+    public string appRecvTime = "2018-06-11 22:44:22";
+    public string appSendTime;
+    public ChatRequestData(string mes, string appId){
+        this.appId = appId;
+        voiceText = mes;
+        appSendTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+    }
+}
+
+[System.Serializable]
+public class ChatResponseJson{
+
+    [SerializeField]
+    private SystemText systemText;
+    public SystemText SystemText{get{return systemText;}}
+
+    [SerializeField]
+    private string command;
+    public string Command{get{return command;}}
+
+    [SerializeField]
+    private DialogStatus dialogStatus;
+    public DialogStatus DialogStatus{get{return dialogStatus;}}
+
+    [SerializeField]
+    private string serverSendTime;
+    public string ServerSendTime{get{return serverSendTime;}}
+}
+
+[System.Serializable]
+public class SystemText{
+    [SerializeField]
+    private string expression;
+    public string Expression{get{return expression;}}
+
+    [SerializeField]
+    private string utterance;
+    public string Utterance{get{return utterance;}}
+}
+
+[System.Serializable]
+public class DialogStatus{
+    [SerializeField]
+    private string commandId;
+    public string CommandId{get{return commandId;}}
+
+    [SerializeField]
+    private IDictionary<string, string> task;
+    public IDictionary<string, string> Task{get{return task;}}
+
+    [SerializeField]
+    private string loopCount;
+    public string LoopCount{get{return loopCount;}}
+}
 
 public class RosiaScript : MonoBehaviour 
 {
@@ -16,6 +79,14 @@ public class RosiaScript : MonoBehaviour
     [SerializeField]
     private string _apikey;
 
+    [Header("API Key")]
+    [Tooltip("docomo API Key")]
+    [SerializeField]
+    private string _docomoApiToken;
+    [Tooltip("docomo API Id")]
+    [SerializeField]
+    private string _docomoAppId;
+
 	private Animator anim;
 	private int state = 0;
 	private SpeechToText m_SpeechToText;
@@ -23,6 +94,8 @@ public class RosiaScript : MonoBehaviour
 	public GameObject userSpeechText;
 	public GameObject userSpeechUI;
 	public GameObject recText;
+	public GameObject rosiaText;
+	public GameObject rosiaFukidasi;
 	// Use this for initialization
 	void Start () {
 		anim = GetComponent<Animator>();
@@ -31,7 +104,10 @@ public class RosiaScript : MonoBehaviour
 		// UIの制御
 		userSpeechUI.SetActive(false);
 		userSpeechText.GetComponent<Text>().text = "";
+		rosiaText.GetComponent<Text>().text = "";
 		recText.SetActive(false);
+		// rosiaFukidasi.SetActive(false);
+		Runnable.Run(setSpeech( "ロージアちゃんにお話ししてね❤" ));
 	}
 
 	private IEnumerator createService() {
@@ -82,7 +158,7 @@ public class RosiaScript : MonoBehaviour
                     string recognitionText = alt.transcript;
                     Debug.Log(string.Format("{0} ({1}, {2:0.00})\n", recognitionText, res.final ? "Final" : "Interim", alt.confidence));
 					userSpeechText.GetComponent<Text>().text = recognitionText;
-					// StartCoroutine(chatAPICall(recognitionText));
+					StartCoroutine(chatAPICall(recognitionText));
 					// StartCoroutine(setSpeech( responseRosia(recognitionText) ));
                 }
             }
@@ -93,13 +169,49 @@ public class RosiaScript : MonoBehaviour
         Debug.Log("SampleSpeechToText.OnFail() Error received: " + error.ToString());
     }
 
+    IEnumerator chatAPICall(string message) {
+        // 雑談API URL
+        string apiUrl = "https://api.apigw.smt.docomo.ne.jp/naturalChatting/v1/dialogue?APIKEY=" + _docomoApiToken;
+        // request bodyのオブジェクトセット
+        ChatRequestData requestBody = new ChatRequestData(message, _docomoAppId);
+        string requestJson = JsonUtility.ToJson(requestBody);
+        byte[] postData = System.Text.Encoding.UTF8.GetBytes (requestJson);
+
+        UnityWebRequest request = new UnityWebRequest(apiUrl, "POST");
+        request.uploadHandler = (UploadHandler)new UploadHandlerRaw(postData);
+        request.downloadHandler = (DownloadHandler)new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json;charset=UTF-8");
+        yield return request.SendWebRequest();
+
+        // 通信エラーチェック
+        if (request.isNetworkError) {
+            Debug.Log(request.error);
+        } else {
+            if (request.responseCode == 200) {
+                // Debug.Log(request.downloadHandler.text);
+                ChatResponseJson responseJson = JsonUtility.FromJson<ChatResponseJson>(request.downloadHandler.text);
+                Debug.Log(responseJson.SystemText.Expression);
+                StartCoroutine(setSpeech( responseJson.SystemText.Expression ));
+            }
+        }
+    }
+
+	IEnumerator setSpeech(string text)
+    {
+        for (int i = 0; i <= text.Length; i++)
+        {
+            rosiaText.GetComponent<Text>().text = text.Substring(0, i);
+            yield return new WaitForSeconds(0.05f);
+        }
+    }
+
 	// Update is called once per frame
 	void Update () {
 		anim.SetInteger("state", state);
 	}
 
 	public void changeState() {
-		state = (state + 1) % 2; //マジックナンバー…
+		state = 1; //マジックナンバー…
 		StartCoroutine(transformSpeechToText());
 	}
 }
