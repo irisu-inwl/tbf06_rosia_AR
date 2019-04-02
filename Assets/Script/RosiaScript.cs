@@ -69,6 +69,21 @@ public class DialogStatus{
     public string LoopCount{get{return loopCount;}}
 }
 
+[System.Serializable]
+public class TransformSpeechRequestData{
+    public string sentence;
+    public TransformSpeechRequestData(string sentence) {
+        this.sentence = sentence;
+    }
+}
+
+[System.Serializable]
+public class TransformSpeechResponseData{
+    [SerializeField]
+    public string tranform_sentence;
+    // public string tranform_sentence{get{return tranform_sentence;}}
+}
+
 public class RosiaScript : MonoBehaviour 
 {
 	[Tooltip("The service URL (optional). This defaults to \"https://stream.watsonplatform.net/speech-to-text/api\"")]
@@ -86,6 +101,10 @@ public class RosiaScript : MonoBehaviour
     [Tooltip("docomo API Id")]
     [SerializeField]
     private string _docomoAppId;
+
+    [Tooltip("My API Url")]
+    [SerializeField]
+    private string _myApiUrl;
 
 	private Animator anim;
 	private int state = 0;
@@ -191,7 +210,33 @@ public class RosiaScript : MonoBehaviour
                 // Debug.Log(request.downloadHandler.text);
                 ChatResponseJson responseJson = JsonUtility.FromJson<ChatResponseJson>(request.downloadHandler.text);
                 Debug.Log(responseJson.SystemText.Expression);
-                StartCoroutine(setSpeech( responseJson.SystemText.Expression ));
+                StartCoroutine(transformSpeech( responseJson.SystemText.Expression ));
+                // StartCoroutine(setSpeech( responseJson.SystemText.Expression ));
+            }
+        }
+    }
+
+    IEnumerator transformSpeech(string message) {
+        // request bodyのオブジェクトセット
+        TransformSpeechRequestData requestBody = new TransformSpeechRequestData(message);
+        string requestJson = JsonUtility.ToJson(requestBody);
+        byte[] postData = System.Text.Encoding.UTF8.GetBytes (requestJson);
+
+        UnityWebRequest request = new UnityWebRequest(_myApiUrl+"/transform", "POST");
+        request.uploadHandler = (UploadHandler)new UploadHandlerRaw(postData);
+        request.downloadHandler = (DownloadHandler)new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json");
+        yield return request.SendWebRequest();
+
+        // 通信エラーチェック
+        if (request.isNetworkError) {
+            Debug.Log(request.error);
+        } else {
+            if (request.responseCode == 200) {
+                // Debug.Log(request.downloadHandler.text);
+                TransformSpeechResponseData responseJson = JsonUtility.FromJson<TransformSpeechResponseData>(request.downloadHandler.text);
+                Debug.Log(responseJson.tranform_sentence);
+                StartCoroutine(setSpeech( responseJson.tranform_sentence ));
             }
         }
     }
